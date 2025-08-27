@@ -1,0 +1,266 @@
+
+=== 2025-08-27T17:59:06.590085 ===
+ORIGINAL CODE:
+import os
+import json
+from datetime import datetime
+from dotenv import load_dotenv
+from openai import OpenAI
+
+load_dotenv()
+
+client = OpenAI(
+    api_key=os.getenv("GEMINI_API_KEY"),
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+)
+
+LOG_FILE = "refactor_logs.txt"
+
+def log_code(original: str, refactored: str):
+    """
+    Salva o código original e o refatorado no log.
+    """
+    timestamp = datetime.now().isoformat()
+    with open(LOG_FILE, "a") as f:
+        f.write(f"\n=== {timestamp} ===\n")
+        f.write("ORIGINAL CODE:\n")
+        f.write(original + "\n\n")
+        f.write("REFACTORED CODE:\n")
+        f.write(refactored + "\n")
+        f.write("="*50 + "\n")
+
+def generate_refactored_code(code_snippet: str) -> str:
+    """
+    Envia o código para a LLM e recebe o código refatorado.
+    """
+    with open("post-examples.json", "r") as f:
+        examples = json.load(f)
+
+    examples_str = ""
+    for i, example in enumerate(examples, 1):
+        examples_str += f"""
+<example-{i}>
+<topic>
+{example['topic']}
+</topic>
+
+<generated-post>
+{example['post']}
+</generated-post>
+</example-{i}>
+"""
+
+    prompt = f"""
+You are a senior software engineer and code quality expert.  
+You excel at analyzing and refactoring code to make it cleaner, more readable, and more efficient — without changing its behavior.
+
+Task: Refactor the code provided by the user.
+
+Guidelines:
+- Preserve the original functionality.  
+- Improve readability and maintainability (naming, formatting, structure).  
+- Apply best practices and idiomatic style for the language used.  
+- Simplify complex or redundant logic where possible.  
+- Add concise inline comments only where they improve clarity.  
+- Do not add extra explanations outside the code block.  
+
+User code:
+<code>
+{code_snippet}
+</code>
+
+Examples:
+<examples>
+{examples_str}
+</examples>
+
+Only output the refactored code inside a properly formatted code block.
+"""
+
+    response = client.chat.completions.create(
+        model="gemini-2.5-flash",
+        messages=[
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": code_snippet}
+        ]
+    )
+
+    refactored_code = response.choices[0].message.content.strip() or "Could not generate refactored code."
+    
+    # Salva log automaticamente
+    log_code(code_snippet, refactored_code)
+    
+    return refactored_code
+
+def main():
+    print("=== Refatorador de Código LLM ===")
+    print("Cole o código que deseja refatorar. Digite 'END' em uma linha separada para finalizar.\n")
+
+    lines = []
+    while True:
+        line = input()
+        if line.strip().upper() == "END":
+            break
+        lines.append(line)
+
+    user_code = "\n".join(lines)
+    refactored = generate_refactored_code(user_code)
+
+    print("\n=== Código Refatorado ===\n")
+    print(refactored)
+    print(f"\nO código original e o refatorado foram salvos em {LOG_FILE}")
+
+if __name__ == "__main__":
+    main()
+
+REFACTORED CODE:
+```python
+import os
+import json
+from datetime import datetime
+from dotenv import load_dotenv
+from openai import OpenAI
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Initialize the OpenAI client with the Gemini API key and base URL.
+# The API key environment variable is named "GEMINI_API_KEY",
+# but it's used with the OpenAI client which targets the Gemini API endpoint.
+client = OpenAI(
+    api_key=os.getenv("GEMINI_API_KEY"),
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+)
+
+# Define the path for the log file
+LOG_FILE = "refactor_logs.txt"
+
+def log_code(original: str, refactored: str):
+    """
+    Saves the original and refactored code snippets to a log file.
+    """
+    timestamp = datetime.now().isoformat()
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(f"\n=== {timestamp} ===\n")
+        f.write("ORIGINAL CODE:\n")
+        f.write(original.strip() + "\n\n")  # Ensure consistent newlines and strip potential extra whitespace
+        f.write("REFACTORED CODE:\n")
+        f.write(refactored.strip() + "\n")  # Ensure consistent newlines and strip potential extra whitespace
+        f.write("="*50 + "\n")
+
+def _load_examples_from_file(file_path: str) -> list[dict]:
+    """
+    Loads example code snippets from a specified JSON file.
+    Handles FileNotFoundError and JSONDecodeError gracefully.
+    """
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"Error: Examples file '{file_path}' not found.")
+        return []
+    except json.JSONDecodeError:
+        print(f"Error: Could not decode JSON from '{file_path}'. Please check file format.")
+        return []
+
+def generate_refactored_code(code_snippet: str) -> str:
+    """
+    Sends the provided code snippet to the LLM for refactoring and returns
+    the refactored code. It also logs the original and refactored code.
+    """
+    examples_data = _load_examples_from_file("post-examples.json")
+
+    # Format examples into a single string for the prompt
+    example_entries = []
+    for i, example in enumerate(examples_data, 1):
+        entry = (
+            f"<example-{i}>\n"
+            f"<topic>\n{example['topic'].strip()}\n</topic>\n\n"
+            f"<generated-post>\n{example['post'].strip()}\n</generated-post>\n"
+            f"</example-{i}>"
+        )
+        example_entries.append(entry)
+    examples_str = "\n\n".join(example_entries) # Join examples with double newlines
+
+    # Construct the system prompt for the LLM
+    prompt = f"""
+You are a senior software engineer and code quality expert.  
+You excel at analyzing and refactoring code to make it cleaner, more readable, and more efficient — without changing its behavior.
+
+Task: Refactor the code provided by the user.
+
+Guidelines:
+- Preserve the original functionality.  
+- Improve readability and maintainability (naming, formatting, structure).  
+- Apply best practices and idiomatic style for the language used.  
+- Simplify complex or redundant logic where possible.  
+- Add concise inline comments only where they improve clarity.  
+- Do not add extra explanations outside the code block.  
+
+User code:
+<code>
+{code_snippet.strip()}
+</code>
+
+Examples:
+<examples>
+{examples_str}
+</examples>
+
+Only output the refactored code inside a properly formatted code block.
+"""
+
+    refactored_code = "Could not generate refactored code." # Default fallback message
+    try:
+        response = client.chat.completions.create(
+            model="gemini-2.5-flash",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": code_snippet.strip()} # Send a stripped version of the user's code
+            ]
+        )
+        # Extract and strip the content from the LLM's response
+        llm_response_content = response.choices[0].message.content.strip()
+        if llm_response_content:
+            refactored_code = llm_response_content
+        
+    except Exception as e:
+        print(f"An error occurred during LLM generation: {e}")
+        refactored_code = "Could not generate refactored code due to an API error."
+
+    # Automatically log the original and refactored code
+    log_code(code_snippet, refactored_code)
+    
+    return refactored_code
+
+def main():
+    """
+    Main function to get user input, refactor code, and display results.
+    """
+    print("=== LLM Code Refactorer ===")
+    print("Paste the code you want to refactor. Type 'END' on a separate line to finish.\n")
+
+    lines = []
+    while True:
+        line = input()
+        if line.strip().upper() == "END":
+            break
+        lines.append(line)
+
+    user_code = "\n".join(lines).strip() # Join lines and strip any leading/trailing empty lines
+
+    if not user_code:
+        print("No code provided for refactoring. Exiting.")
+        return
+
+    print("\nRefactoring in progress, please wait...")
+    refactored = generate_refactored_code(user_code)
+
+    print("\n=== Refactored Code ===\n")
+    print(refactored)
+    print(f"\nOriginal and refactored code logged to {LOG_FILE}")
+
+if __name__ == "__main__":
+    main()
+```
+==================================================
