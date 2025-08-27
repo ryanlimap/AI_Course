@@ -5,7 +5,7 @@ build/
 dist/
 wheels/
 *.egg-info
-refactor_logs
+refactor_logs.txt
 
 # Virtual environments
 .venv
