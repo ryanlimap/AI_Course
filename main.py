@@ -1,111 +1,142 @@
-import os
 import json
-from datetime import datetime
-from dotenv import load_dotenv
+
+# Run "uv sync" to install the below packages
 from openai import OpenAI
+from dotenv import load_dotenv
+import requests
 
 load_dotenv()
 
-client = OpenAI(
-    api_key=os.getenv("GEMINI_API_KEY"),
-    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
-)
+client = OpenAI()
 
-LOG_FILE = "refactor_logs.txt"
 
-def log_code(original: str, refactored: str):
-    """
-    Salva o código original e o refatorado no log.
-    """
-    timestamp = datetime.now().isoformat()
-    with open(LOG_FILE, "a") as f:
-        f.write(f"\n=== {timestamp} ===\n")
-        f.write("ORIGINAL CODE:\n")
-        f.write(original + "\n\n")
-        f.write("REFACTORED CODE:\n")
-        f.write(refactored + "\n")
-        f.write("="*50 + "\n")
+def get_website_html(url: str) -> str:
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an error for bad responses
+        return response.text
+    except requests.RequestException as e:
+        print(f"Error fetching the URL {url}: {e}")
+        return ""
 
-def generate_refactored_code(code_snippet: str) -> str:
-    """
-    Envia o código para a LLM e recebe o código refatorado.
-    """
+
+def extract_core_website_content(html: str) -> str:
+    response = client.responses.create(
+        # using gpt-4o-mini because it's great for summarization & extraction tasks (and cheap!)
+        model="gpt-4o-mini",
+        input=f"""
+            You are an expert web content extractor. Your task is to extract the core content from a given HTML page.
+            The core content should be the main text, excluding navigation, footers, and other non-essential elements like scripts etc.
+
+            Here is the HTML content:
+            <html>
+            {html}
+            </html>
+
+            Please extract the core content and return it as plain text.
+        """
+    )
+
+    return response.output_text
+
+
+def summarize_content(content: str) -> str:
+    response = client.responses.create(
+        model="gpt-4o-mini",
+        input=f"""
+            You are an expert summarizer. Your task is to summarize the provided content into a concise and clear summary.
+
+            Here is the content to summarize:
+            <content>
+            {content}
+            </content>
+
+            Please provide a brief summary of the main points in the content. Prefer bullet points and avoid unncessary explanations.
+        """
+    )
+
+    return response.output_text
+
+
+def generate_x_post(summary: str) -> str:
     with open("post-examples.json", "r") as f:
         examples = json.load(f)
 
     examples_str = ""
     for i, example in enumerate(examples, 1):
         examples_str += f"""
-<example-{i}>
-<topic>
-{example['topic']}
-</topic>
+        <example-{i}>
+            <topic>
+            {example['topic']}
+            </topic>
 
-<generated-post>
-{example['post']}
-</generated-post>
-</example-{i}>
-"""
+            <generated-post>
+            {example['post']}
+            </generated-post>
+        </example-{i}>
+        """
 
     prompt = f"""
-You are a senior software engineer and code quality expert.  
-You excel at analyzing and refactoring code to make it cleaner, more readable, and more efficient — without changing its behavior.
+        You are an expert social media manager, and you excel at crafting viral and highly engaging posts for X (formerly Twitter).
 
-Task: Refactor the code provided by the user.
+        Your task is to generate a post based on a short text summary.
+        Your post must be concise and impactful.
+        Avoid using hashtags and lots of emojis (a few emojis are okay, but not too many).
 
-Guidelines:
-- Preserve the original functionality.  
-- Improve readability and maintainability (naming, formatting, structure).  
-- Apply best practices and idiomatic style for the language used.  
-- Simplify complex or redundant logic where possible.  
-- Add concise inline comments only where they improve clarity.  
-- Do not add extra explanations outside the code block.  
+        Keep the post short and focused, structure it in a clean, readable way, using line breaks and empty lines to enhance readability.
 
-User code:
-<code>
-{code_snippet}
-</code>
+        Here's the text summary which you should use to generate the post:
+        <summary>
+        {summary}
+        </summary>
 
-Examples:
-<examples>
-{examples_str}
-</examples>
+        Here are some examples of topics and generated posts:
+        <examples>
+            {examples_str}
+        </examples>
 
-Only output the refactored code inside a properly formatted code block.
+        Please use the tone, language, structure , and style of the examples provided above to generate a post that is engaging and relevant to the topic provided by the user.
+        Don't use the content from the examples!
 """
-
-    response = client.chat.completions.create(
-        model="gemini-2.5-flash",
-        messages=[
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": code_snippet}
-        ]
+    response = client.responses.create(
+        model="gpt-4o",
+        input=prompt
     )
 
-    refactored_code = response.choices[0].message.content.strip() or "Could not generate refactored code."
-    
-    # Salva log automaticamente
-    log_code(code_snippet, refactored_code)
-    
-    return refactored_code
+    return response.output_text
+
 
 def main():
-    print("=== Refatorador de Código LLM ===")
-    print("Cole o código que deseja refatorar. Digite 'END' em uma linha separada para finalizar.\n")
+    website_url = input("Website URL: ")
+    print("Fetching website HTML...")
+    try:
+        html_content = get_website_html(website_url)
+    except Exception as e:
+        print(f"An error occurred while fetching the website: {e}")
+        return
+    
+    if not html_content:
+        print("Failed to fetch the website content. Exiting.")
+        return
+    
+    print("---------")
+    print("Extracting core content from the website...")
+    core_content = extract_core_website_content(html_content)
+    print("Extracted core content:")
+    print(core_content)
 
-    lines = []
-    while True:
-        line = input()
-        if line.strip().upper() == "END":
-            break
-        lines.append(line)
+    print("---------")
+    print("Summarizing the core content...")
+    summary = summarize_content(core_content)
+    print("Generated summary:")
+    print(summary)
+    
+    print("---------")
+    print("Generating X post based on the summary...")
+    x_post = generate_x_post(summary)
+    print("Generated X post:")
+    print(x_post)
 
-    user_code = "\n".join(lines)
-    refactored = generate_refactored_code(user_code)
-
-    print("\n=== Código Refatorado ===\n")
-    print(refactored)
-    print(f"\nO código original e o refatorado foram salvos em {LOG_FILE}")
 
 if __name__ == "__main__":
     main()
